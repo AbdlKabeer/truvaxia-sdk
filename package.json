@@ -1,0 +1,35 @@
+{
+  "name": "@olakay/truvaxia-sdk",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/truvaxia.cjs",
+  "module": "./dist/truvaxia.js",
+  "exports": {
+    ".": {
+      "import": "./dist/truvaxia.js",
+      "require": "./dist/truvaxia.cjs"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AbdlKabeer/truvaxia-sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AbdlKabeer/truvaxia-sdk/issues"
+  },
+  "homepage": "https://github.com/AbdlKabeer/truvaxia-sdk#readme",
+  "scripts": {
+    "build": "tsup src/core/truvaxia.ts --format esm,cjs --clean"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "^0.10.35"
+  }
+}
