@@ -12,6 +12,13 @@ export interface DeviceProfile {
     lng: number | null;
     permissionGranted: boolean;
   };
+  ipData?: {
+    ip: string;
+    city: string;
+    region: string;
+    country: string;
+    org: string;
+  };
 }
 
 export class DeviceFingerprint {
@@ -70,6 +77,25 @@ export class DeviceFingerprint {
     }
   }
 
+  public async collectIpTelemetry(): Promise<void> {
+    if (typeof window === 'undefined') return;
+    try {
+      const response = await fetch('https://ipapi.co/json/');
+      if (response.ok) {
+        const data = await response.json();
+        this.profile.ipData = {
+          ip: data.ip || 'unknown',
+          city: data.city || 'unknown',
+          region: data.region || 'unknown',
+          country: data.country_name || 'unknown',
+          org: data.org || 'unknown'
+        };
+      }
+    } catch (e) {
+      console.warn('[Truvaxia] Could not fetch IP telemetry', e);
+    }
+  }
+
   public getProfile(): DeviceProfile {
     // Return a complete profile, defaulting to empty/null if basic collection failed
     return {
@@ -81,7 +107,8 @@ export class DeviceFingerprint {
       screenResolution: this.profile.screenResolution || 'unknown',
       timezoneOffset: this.profile.timezoneOffset || 0,
       timezoneName: this.profile.timezoneName || 'unknown',
-      location: this.profile.location || { lat: null, lng: null, permissionGranted: false }
+      location: this.profile.location || { lat: null, lng: null, permissionGranted: false },
+      ipData: this.profile.ipData
     };
   }
 }

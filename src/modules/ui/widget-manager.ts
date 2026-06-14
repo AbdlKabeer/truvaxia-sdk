@@ -88,7 +88,7 @@ export class WidgetManager {
     this.contentBox.innerHTML = `
       <div style="display: flex; flex-direction: column; align-items: center; animation: pulse 2s infinite;">
         <div style="width: 4rem; height: 4rem; border-radius: 9999px; border-top: 2px solid transparent; border-right: 2px solid #00ffb2; border-bottom: 2px solid #00ffb2; border-left: 2px solid #00ffb2; animation: spin 1s linear infinite; margin-bottom: 1rem;"></div>
-        <p style="color: #00ffb2; font-weight: 600; letter-spacing: 0.1em;">ANALYZING SESSION LOGS...</p>
+        <p style="color: #00ffb2; font-weight: 600; letter-spacing: 0.1em;">ANALYZING...</p>
       </div>
     `;
   }

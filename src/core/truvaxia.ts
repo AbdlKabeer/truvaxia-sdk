@@ -109,13 +109,16 @@ export class Truvaxia {
       widget.showProcessing();
 
       // 3. Gather Telemetry and Make the API Call
-      await this.instance.deviceFingerprint.requestLocation();
+      await Promise.all([
+        this.instance.deviceFingerprint.requestLocation(),
+        this.instance.deviceFingerprint.collectIpTelemetry()
+      ]);
       const deviceProfile = this.instance.deviceFingerprint.getProfile();
       const behavioralLogs = this.instance.inputTracker.getSessionData();
       
       const payload = {
         actionType: 'ONBOARDING',
-        businessData: { ...data, biometricFrame: result.frameBase64 },
+        businessData: { ...data, biometricFrame: result.frameBase64, biometricVideo: result.videoBase64 },
         securityData: {
           behavioral: behavioralLogs,
           device: deviceProfile,
@@ -145,6 +148,33 @@ export class Truvaxia {
         widget.unmount();
         callbacks.onFailure({ message: e instanceof Error ? e.message : 'Unknown error during onboarding' });
       }
+    }
+  }
+
+  /**
+   * Dynamic Document Extraction
+   * Sends an image and a JSON schema to the backend, which parses the image using OCR + Groq LLM
+   * and returns perfectly structured JSON.
+   */
+  public static async extractDocument(payload: { imageBase64: string, schema: Record<string, any> }): Promise<any> {
+    if (!this.instance) throw new Error("Truvaxia must be initialized first");
+
+    try {
+      const response = await fetch('http://localhost:3001/api/v1/extract-document', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to extract document data');
+      }
+
+      return result.data;
+    } catch (e) {
+      console.error("[Truvaxia] Document extraction error:", e);
+      throw e;
     }
   }
 

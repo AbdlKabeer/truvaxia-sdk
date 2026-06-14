@@ -14,6 +14,8 @@ export class LivenessDetector {
   private lastVideoTime: number = -1;
   private isDetecting: boolean = false;
   private animationFrameId: number | null = null;
+  private mediaRecorder: MediaRecorder | null = null;
+  private recordedChunks: Blob[] = [];
   
   private currentStage: LivenessStage = LivenessStage.BLINK;
   private onProgressCallback?: (stage: string) => void;
@@ -80,6 +82,19 @@ export class LivenessDetector {
         video: { width: 1280, height: 720, facingMode: 'user' }
       });
       this.videoElement.srcObject = stream;
+
+      this.recordedChunks = [];
+      try {
+        this.mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+        this.mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            this.recordedChunks.push(event.data);
+          }
+        };
+        this.mediaRecorder.start();
+      } catch (e) {
+        console.error('[Truvaxia:Liveness] Failed to start MediaRecorder:', e);
+      }
 
       this.videoElement.addEventListener('loadeddata', () => {
         this.isDetecting = true;
@@ -165,7 +180,7 @@ export class LivenessDetector {
   /**
    * Called upon form submission. Evaluates liveness status and captures the frame.
    */
-  public async execute(): Promise<{ success: boolean; frameBase64?: string; reason?: string }> {
+  public async execute(): Promise<{ success: boolean; frameBase64?: string; videoBase64?: string; reason?: string }> {
     console.log('[Truvaxia:Liveness] Executing final validation...');
     this.isDetecting = false;
     
@@ -193,6 +208,20 @@ export class LivenessDetector {
       base64Image = canvas.toDataURL('image/jpeg', 0.9);
     }
 
+    let videoBase64: string | undefined;
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      videoBase64 = await new Promise<string | undefined>((resolve) => {
+        this.mediaRecorder!.onstop = () => {
+          const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
+          const reader = new FileReader();
+          reader.readAsDataURL(blob);
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = () => resolve(undefined);
+        };
+        this.mediaRecorder!.stop();
+      });
+    }
+
     // Shut down the camera hardware
     const stream = this.videoElement.srcObject as MediaStream;
     if (stream) {
@@ -201,7 +230,7 @@ export class LivenessDetector {
     this.videoElement.srcObject = null;
     
     if (base64Image) {
-      return { success: true, frameBase64: base64Image };
+      return { success: true, frameBase64: base64Image, videoBase64 };
     }
 
     return { success: false, reason: 'Failed to extract frame from canvas.' };

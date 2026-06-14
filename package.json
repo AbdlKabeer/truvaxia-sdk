@@ -1,7 +1,10 @@
 {
-  "name": "@olakay/truvaxia-sdk",
-  "version": "1.0.0",
+  "name": "@truvaxia/sdk",
+  "version": "1.0.4",
   "type": "module",
+  "files": [
+    "dist"
+  ],
   "main": "./dist/truvaxia.cjs",
   "module": "./dist/truvaxia.js",
   "exports": {
