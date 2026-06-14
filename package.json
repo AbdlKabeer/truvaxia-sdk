@@ -1,6 +1,6 @@
 {
-  "name": "@truvaxia/sdk",
-  "version": "1.0.4",
+  "name": "truvaxia-ai-sdk",
+  "version": "1.0.0",
   "type": "module",
   "files": [
     "dist"
