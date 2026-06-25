@@ -6,6 +6,7 @@ import { DeviceFingerprint } from '../modules/device/fingerprint';
 
 export interface TruvaxiaConfig {
   staffId: string;
+  baseUrl?: string;
 }
 
 export interface ProcessCallbacks {
@@ -60,14 +61,14 @@ export class Truvaxia {
    * Universal drop-in widget for identity verification.
    * Mounts the scanner UI, captures biometrics, and handles the backend verification automatically.
    */
-  public static async verifyOnboarding(data: any, callbacks: ProcessCallbacks) {
+  public static async verifyOnboarding(data: any, callbacks: ProcessCallbacks, companyName?: string) {
     if (!this.instance) throw new Error("Truvaxia must be initialized first");
 
     const widget = this.instance.widgetManager;
     const liveness = this.instance.livenessDetector;
 
     let isCancelled = false;
-    widget.mount(`${data.firstName || ''} ${data.lastName || ''}`.trim(), () => {
+    widget.mount(companyName, () => {
       isCancelled = true;
       callbacks.onFailure({ message: "User cancelled verification" });
     });
@@ -82,6 +83,11 @@ export class Truvaxia {
             case 'TURN_LEFT': widget.updateInstruction('Turn Head Left'); break;
             case 'TURN_RIGHT': widget.updateInstruction('Turn Head Right'); break;
             case 'LOOK_STRAIGHT': widget.updateInstruction('Look Straight Ahead'); break;
+            case 'TOO_DARK': widget.updateInstruction('Too dark! Move to a brighter area.'); break;
+            case 'TOO_BRIGHT': widget.updateInstruction('Too bright! Avoid harsh lighting.'); break;
+            case 'OFF_CENTER': widget.updateInstruction('Center your face in the frame'); break;
+            case 'TILTED': widget.updateInstruction('Keep your head straight'); break;
+            case 'BLURRY': widget.updateInstruction('Hold still, camera is blurry'); break;
             case 'COMPLETED': 
               widget.updateInstruction('Capturing...'); 
               resolve();
@@ -126,7 +132,8 @@ export class Truvaxia {
         }
       };
 
-      const response = await fetch('http://localhost:3001/verify', {
+      const baseUrl = this.instance.config?.baseUrl || 'https://truvaxia-backend.onrender.com';
+      const response = await fetch(`${baseUrl}/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -152,6 +159,92 @@ export class Truvaxia {
   }
 
   /**
+   * Standalone Liveness Screening.
+   * Runs only the liveness detection and returns the detailed facial analysis.
+   */
+  public static async verifyLivenessOnly(callbacks: ProcessCallbacks, companyName?: string) {
+    if (!this.instance) throw new Error("Truvaxia must be initialized first");
+
+    const widget = this.instance.widgetManager;
+    const liveness = this.instance.livenessDetector;
+
+    let isCancelled = false;
+    widget.mount(companyName, () => {
+      isCancelled = true;
+      callbacks.onFailure({ message: "User cancelled liveness screening" });
+    });
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        liveness.start((stage: string) => {
+          if (isCancelled) return;
+          switch(stage) {
+            case 'BLINK': widget.updateInstruction('Please Blink'); break;
+            case 'TURN_LEFT': widget.updateInstruction('Turn Head Left'); break;
+            case 'TURN_RIGHT': widget.updateInstruction('Turn Head Right'); break;
+            case 'LOOK_STRAIGHT': widget.updateInstruction('Look Straight Ahead'); break;
+            case 'TOO_DARK': widget.updateInstruction('Too dark! Move to a brighter area.'); break;
+            case 'TOO_BRIGHT': widget.updateInstruction('Too bright! Avoid harsh lighting.'); break;
+            case 'OFF_CENTER': widget.updateInstruction('Center your face in the frame'); break;
+            case 'TILTED': widget.updateInstruction('Keep your head straight'); break;
+            case 'BLURRY': widget.updateInstruction('Hold still, camera is blurry'); break;
+            case 'COMPLETED': 
+              widget.updateInstruction('Capturing...'); 
+              resolve();
+              break;
+          }
+        }).then(stream => {
+          if (isCancelled) return;
+          const videoElement = widget.showScanning();
+          videoElement.srcObject = stream;
+        }).catch(reject);
+      });
+
+      if (isCancelled) return;
+
+      // Small delay for stability before capture
+      await new Promise(r => setTimeout(r, 400));
+      if (isCancelled) return;
+
+      const result = await liveness.execute();
+      if (!result.success || !result.frameBase64) {
+        throw new Error("Liveness capture failed");
+      }
+
+      widget.showProcessing();
+
+      const baseUrl = this.instance.config?.baseUrl || 'https://truvaxia-backend.onrender.com';
+      const response = await fetch(`${baseUrl}/api/v1/analyze-liveness`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: result.frameBase64 })
+      });
+
+      const backendResult = await response.json();
+      
+      if (!isCancelled) {
+        widget.unmount();
+        if (response.ok) {
+          callbacks.onSuccess({
+            livenessVerified: true,
+            frameBase64: result.frameBase64,
+            videoBase64: result.videoBase64,
+            analysis: backendResult.data
+          });
+        } else {
+          callbacks.onFailure(backendResult);
+        }
+      }
+
+    } catch (e) {
+      if (!isCancelled) {
+        widget.unmount();
+        callbacks.onFailure({ message: e instanceof Error ? e.message : 'Unknown error during liveness screening' });
+      }
+    }
+  }
+
+  /**
    * Dynamic Document Extraction
    * Sends an image and a JSON schema to the backend, which parses the image using OCR + Groq LLM
    * and returns perfectly structured JSON.
@@ -160,7 +253,8 @@ export class Truvaxia {
     if (!this.instance) throw new Error("Truvaxia must be initialized first");
 
     try {
-      const response = await fetch('http://localhost:3001/api/v1/extract-document', {
+      const baseUrl = this.instance?.config?.baseUrl || 'https://truvaxia-backend.onrender.com';
+      const response = await fetch(`${baseUrl}/api/v1/extract-document`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)

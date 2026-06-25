@@ -4,7 +4,7 @@ export class WidgetManager {
   private instructionText: HTMLParagraphElement | null = null;
   private contentBox: HTMLDivElement | null = null;
   
-  public mount(customerName: string, onClose: () => void) {
+  public mount(companyName: string | undefined, onClose: () => void) {
     if (this.container) return;
 
     this.container = document.createElement('div');
@@ -17,8 +17,8 @@ export class WidgetManager {
         <!-- Header -->
         <div style="padding: 1.5rem; border-bottom: 1px solid rgba(0,255,178,0.2); display: flex; justify-content: space-between; align-items: center; background: rgba(5,10,15,0.9);">
           <div>
-            <h3 style="font-size: 1.25rem; font-weight: 700; color: white; margin: 0;">Zero-Trust Identity Verification</h3>
-            <p style="font-size: 0.875rem; color: #94a3b8; margin: 0.25rem 0 0 0;">Subject: ${customerName || 'Guest'}</p>
+            <h3 style="font-size: 1.25rem; font-weight: 700; color: white; margin: 0;">${companyName || 'Truvaxia'}</h3>
+            <p style="font-size: 0.75rem; color: #94a3b8; margin: 0.25rem 0 0 0;">Powered by Truvaxia</p>
           </div>
           <button id="truvaxia-close-btn" style="background: none; border: none; color: #94a3b8; font-size: 1.5rem; cursor: pointer; padding: 0.5rem;">✕</button>
         </div>
