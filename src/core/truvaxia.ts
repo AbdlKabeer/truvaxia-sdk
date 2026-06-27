@@ -132,7 +132,7 @@ export class Truvaxia {
         }
       };
 
-      const baseUrl = this.instance.config?.baseUrl || 'https://truvaxia-backend.onrender.com';
+      const baseUrl = this.instance.config?.baseUrl || 'http://localhost:3002';
       const response = await fetch(`${baseUrl}/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -213,7 +213,7 @@ export class Truvaxia {
 
       widget.showProcessing();
 
-      const baseUrl = this.instance.config?.baseUrl || 'https://truvaxia-backend.onrender.com';
+      const baseUrl = this.instance.config?.baseUrl || 'http://localhost:3002';
       const response = await fetch(`${baseUrl}/api/v1/analyze-liveness`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -245,6 +245,114 @@ export class Truvaxia {
   }
 
   /**
+   * Standalone Face Comparison
+   * Compares two base64 images and returns the match score.
+   */
+  public static async compareFaces(payload: { imageBase64_1: string, imageBase64_2: string }): Promise<any> {
+    if (!this.instance) throw new Error("Truvaxia must be initialized first");
+    try {
+      const baseUrl = this.instance?.config?.baseUrl || 'http://localhost:3002';
+      const response = await fetch(`${baseUrl}/api/v1/compare-faces`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Failed to compare faces');
+      return result.data;
+    } catch (e) {
+      console.error("[Truvaxia] Face comparison error:", e);
+      throw e;
+    }
+  }
+
+  /**
+   * Liveness + Face Match
+   * Runs liveness detection and compares the live frame against a reference image.
+   */
+  public static async verifyLivenessAndMatch(callbacks: ProcessCallbacks, referenceImageBase64: string, companyName?: string) {
+    if (!this.instance) throw new Error("Truvaxia must be initialized first");
+
+    const widget = this.instance.widgetManager;
+    const liveness = this.instance.livenessDetector;
+
+    let isCancelled = false;
+    widget.mount(companyName, () => {
+      isCancelled = true;
+      callbacks.onFailure({ message: "User cancelled liveness and match screening" });
+    });
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        liveness.start((stage: string) => {
+          if (isCancelled) return;
+          switch(stage) {
+            case 'BLINK': widget.updateInstruction('Please Blink'); break;
+            case 'TURN_LEFT': widget.updateInstruction('Turn Head Left'); break;
+            case 'TURN_RIGHT': widget.updateInstruction('Turn Head Right'); break;
+            case 'LOOK_STRAIGHT': widget.updateInstruction('Look Straight Ahead'); break;
+            case 'TOO_DARK': widget.updateInstruction('Too dark! Move to a brighter area.'); break;
+            case 'TOO_BRIGHT': widget.updateInstruction('Too bright! Avoid harsh lighting.'); break;
+            case 'OFF_CENTER': widget.updateInstruction('Center your face in the frame'); break;
+            case 'TILTED': widget.updateInstruction('Keep your head straight'); break;
+            case 'BLURRY': widget.updateInstruction('Hold still, camera is blurry'); break;
+            case 'COMPLETED': 
+              widget.updateInstruction('Capturing...'); 
+              resolve();
+              break;
+          }
+        }).then(stream => {
+          if (isCancelled) return;
+          const videoElement = widget.showScanning();
+          videoElement.srcObject = stream;
+        }).catch(reject);
+      });
+
+      if (isCancelled) return;
+
+      // Small delay for stability before capture
+      await new Promise(r => setTimeout(r, 400));
+      if (isCancelled) return;
+
+      const result = await liveness.execute();
+      if (!result.success || !result.frameBase64) {
+        throw new Error("Liveness capture failed");
+      }
+
+      widget.showProcessing();
+
+      const baseUrl = this.instance.config?.baseUrl || 'http://localhost:3002';
+      const response = await fetch(`${baseUrl}/api/v1/liveness-and-match`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: result.frameBase64, referenceImageBase64 })
+      });
+
+      const backendResult = await response.json();
+      
+      if (!isCancelled) {
+        widget.unmount();
+        if (response.ok) {
+          callbacks.onSuccess({
+            ...backendResult.data,
+            frameBase64: result.frameBase64,
+            videoBase64: result.videoBase64,
+          });
+        } else {
+          callbacks.onFailure(backendResult);
+        }
+      }
+
+    } catch (e) {
+      if (!isCancelled) {
+        widget.unmount();
+        callbacks.onFailure({ message: e instanceof Error ? e.message : 'Unknown error during liveness and match screening' });
+      }
+    }
+  }
+
+
+  /**
    * Dynamic Document Extraction
    * Sends an image and a JSON schema to the backend, which parses the image using OCR + Groq LLM
    * and returns perfectly structured JSON.
@@ -253,7 +361,7 @@ export class Truvaxia {
     if (!this.instance) throw new Error("Truvaxia must be initialized first");
 
     try {
-      const baseUrl = this.instance?.config?.baseUrl || 'https://truvaxia-backend.onrender.com';
+      const baseUrl = this.instance?.config?.baseUrl || 'http://localhost:3002';
       const response = await fetch(`${baseUrl}/api/v1/extract-document`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
