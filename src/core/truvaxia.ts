@@ -5,13 +5,34 @@ import { WidgetManager } from '../modules/ui/widget-manager';
 import { DeviceFingerprint } from '../modules/device/fingerprint';
 
 export interface TruvaxiaConfig {
-  staffId: string;
+  apiKey: string;
   baseUrl?: string;
 }
 
 export interface ProcessCallbacks {
   onSuccess: (result: any) => void;
   onFailure: (error: any) => void;
+}
+
+export interface AiConfig {
+  provider: 'openai' | 'gemini' | 'groq';
+  apiKey: string;
+}
+
+export interface RiskAnalysisOptions {
+  customerData: Record<string, any>;
+  context?: string;
+  aiConfig?: AiConfig;
+}
+
+export interface RiskAnalysisResponse {
+  success: boolean;
+  riskLevel?: string;
+  repaymentProbabilityScore?: number;
+  approvedRecommendation?: boolean;
+  reasoning?: string;
+  riskFactors?: string[];
+  error?: string;
 }
 
 export class Truvaxia {
@@ -38,9 +59,9 @@ export class Truvaxia {
       
       // Preload heavy WASM models in the background
       this.instance.livenessDetector.preload().catch(console.error);
-      await this.instance.policyClient.fetchPolicy(config.staffId);
-      this.instance.inputTracker.startTracking(config.staffId);
-      console.log(`[Truvaxia] SDK initialized for staff: ${config.staffId}`);
+      await this.instance.policyClient.fetchPolicy(config.apiKey);
+      this.instance.inputTracker.startTracking(config.apiKey);
+      console.log(`[Truvaxia] SDK initialized with API Key: ${config.apiKey.substring(0,8)}...`);
     }
     return this.instance;
   }
@@ -128,14 +149,17 @@ export class Truvaxia {
         securityData: {
           behavioral: behavioralLogs,
           device: deviceProfile,
-          staffId: this.instance.config?.staffId
+          apiKey: this.instance.config?.apiKey
         }
       };
 
       const baseUrl = this.instance.config?.baseUrl || 'http://localhost:3002';
       const response = await fetch(`${baseUrl}/verify`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.instance.config?.apiKey}`
+        },
         body: JSON.stringify(payload)
       });
 
@@ -216,8 +240,11 @@ export class Truvaxia {
       const baseUrl = this.instance.config?.baseUrl || 'http://localhost:3002';
       const response = await fetch(`${baseUrl}/api/v1/analyze-liveness`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: result.frameBase64 })
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.instance?.config?.apiKey}`
+        },
+        body: JSON.stringify({ frameBase64: result.frameBase64, videoBase64: result.videoBase64 })
       });
 
       const backendResult = await response.json();
@@ -254,7 +281,10 @@ export class Truvaxia {
       const baseUrl = this.instance?.config?.baseUrl || 'http://localhost:3002';
       const response = await fetch(`${baseUrl}/api/v1/compare-faces`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.instance?.config?.apiKey}`
+        },
         body: JSON.stringify(payload)
       });
       const result = await response.json();
@@ -324,8 +354,11 @@ export class Truvaxia {
       const baseUrl = this.instance.config?.baseUrl || 'http://localhost:3002';
       const response = await fetch(`${baseUrl}/api/v1/liveness-and-match`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: result.frameBase64, referenceImageBase64 })
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.instance?.config?.apiKey}`
+        },
+        body: JSON.stringify({ frameBase64: result.frameBase64, videoBase64: result.videoBase64, referenceImageBase64 })
       });
 
       const backendResult = await response.json();
@@ -357,15 +390,18 @@ export class Truvaxia {
    * Sends an image and a JSON schema to the backend, which parses the image using OCR + Groq LLM
    * and returns perfectly structured JSON.
    */
-  public static async extractDocument(payload: { imageBase64: string, schema: Record<string, any> }): Promise<any> {
+  public static async extractDocument(payload: { imageBase64: string, schema: Record<string, any>, type?: string }): Promise<any> {
     if (!this.instance) throw new Error("Truvaxia must be initialized first");
 
     try {
       const baseUrl = this.instance?.config?.baseUrl || 'http://localhost:3002';
       const response = await fetch(`${baseUrl}/api/v1/extract-document`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.instance?.config?.apiKey}`
+        },
+        body: JSON.stringify({ imageBase64: payload.imageBase64, type: payload.type })
       });
 
       const result = await response.json();
@@ -377,6 +413,35 @@ export class Truvaxia {
     } catch (e) {
       console.error("[Truvaxia] Document extraction error:", e);
       throw e;
+    }
+  }
+
+  public static async analyzeRisk(options: RiskAnalysisOptions): Promise<RiskAnalysisResponse> {
+    if (!this.instance) throw new Error("Truvaxia must be initialized first");
+
+    try {
+      const baseUrl = this.instance?.config?.baseUrl || 'http://localhost:3002';
+      const response = await fetch(`${baseUrl}/api/v1/analyze-risk`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.instance?.config?.apiKey}`
+        },
+        body: JSON.stringify(options)
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to analyze risk');
+      }
+
+      return result;
+    } catch (e: any) {
+      console.error("[Truvaxia] Risk analysis error:", e);
+      return {
+        success: false,
+        error: e.message || 'Failed to analyze risk'
+      };
     }
   }
 
