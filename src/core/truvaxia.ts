@@ -385,24 +385,43 @@ export class Truvaxia {
   }
 
 
-  /**
-   * Dynamic Document Extraction
-   * Sends an image and a JSON schema to the backend, which parses the image using OCR + Groq LLM
-   * and returns perfectly structured JSON.
-   */
-  public static async extractDocument(payload: { imageBase64: string, schema: Record<string, any>, type?: string }): Promise<any> {
+  public static async extractDocument(payload: { file?: File | Blob | any, imageBase64?: string, schema: Record<string, any>, type?: string }): Promise<any> {
     if (!this.instance) throw new Error("Truvaxia must be initialized first");
 
     try {
       const baseUrl = this.instance?.config?.baseUrl || 'http://localhost:3002';
-      const response = await fetch(`${baseUrl}/api/v1/extract-document`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.instance?.config?.apiKey}`
-        },
-        body: JSON.stringify({ imageBase64: payload.imageBase64, type: payload.type })
-      });
+      let response;
+
+      if (payload.file) {
+        // Use FormData for binary files
+        const formData = new FormData();
+        formData.append('document', payload.file as any);
+        formData.append('schema', JSON.stringify(payload.schema));
+        if (payload.type) formData.append('type', payload.type);
+
+        response = await fetch(`${baseUrl}/api/v1/extract-document`, {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${this.instance?.config?.apiKey}`
+            // Don't set Content-Type for FormData, fetch will set it with boundary
+          },
+          body: formData
+        });
+      } else {
+        // Fallback to Base64
+        response = await fetch(`${baseUrl}/api/v1/extract-document`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.instance?.config?.apiKey}`
+          },
+          body: JSON.stringify({ 
+            imageBase64: payload.imageBase64, 
+            schema: payload.schema,
+            type: payload.type 
+          })
+        });
+      }
 
       const result = await response.json();
       if (!response.ok) {
