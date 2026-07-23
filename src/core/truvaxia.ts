@@ -56,12 +56,12 @@ export class Truvaxia {
     if (!this.instance) {
       this.instance = new Truvaxia();
       this.instance.config = config;
-      
+
       // Preload heavy WASM models in the background
       this.instance.livenessDetector.preload().catch(console.error);
       await this.instance.policyClient.fetchPolicy(config.apiKey);
       this.instance.inputTracker.startTracking(config.apiKey);
-      console.log(`[Truvaxia] SDK initialized with API Key: ${config.apiKey.substring(0,8)}...`);
+      console.log(`[Truvaxia] SDK initialized with API Key: ${config.apiKey.substring(0, 8)}...`);
     }
     return this.instance;
   }
@@ -99,7 +99,7 @@ export class Truvaxia {
       await new Promise<void>((resolve, reject) => {
         liveness.start((stage: string) => {
           if (isCancelled) return;
-          switch(stage) {
+          switch (stage) {
             case 'BLINK': widget.updateInstruction('Please Blink'); break;
             case 'TURN_LEFT': widget.updateInstruction('Turn Head Left'); break;
             case 'TURN_RIGHT': widget.updateInstruction('Turn Head Right'); break;
@@ -109,8 +109,8 @@ export class Truvaxia {
             case 'OFF_CENTER': widget.updateInstruction('Center your face in the frame'); break;
             case 'TILTED': widget.updateInstruction('Keep your head straight'); break;
             case 'BLURRY': widget.updateInstruction('Hold still, camera is blurry'); break;
-            case 'COMPLETED': 
-              widget.updateInstruction('Capturing...'); 
+            case 'COMPLETED':
+              widget.updateInstruction('Capturing...');
               resolve();
               break;
           }
@@ -142,7 +142,7 @@ export class Truvaxia {
       ]);
       const deviceProfile = this.instance.deviceFingerprint.getProfile();
       const behavioralLogs = this.instance.inputTracker.getSessionData();
-      
+
       const payload = {
         actionType: 'ONBOARDING',
         businessData: { ...data, biometricFrame: result.frameBase64, biometricVideo: result.videoBase64 },
@@ -153,10 +153,10 @@ export class Truvaxia {
         }
       };
 
-      const baseUrl = this.instance.config?.baseUrl || 'http://localhost:3002';
+      const baseUrl = this.instance.config?.baseUrl || 'http://localhost:8000';
       const response = await fetch(`${baseUrl}/verify`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.instance.config?.apiKey}`
         },
@@ -164,7 +164,7 @@ export class Truvaxia {
       });
 
       const backendResult = await response.json();
-      
+
       if (!isCancelled) {
         widget.unmount();
         if (response.ok && backendResult.status === 'APPROVED') {
@@ -202,7 +202,7 @@ export class Truvaxia {
       await new Promise<void>((resolve, reject) => {
         liveness.start((stage: string) => {
           if (isCancelled) return;
-          switch(stage) {
+          switch (stage) {
             case 'BLINK': widget.updateInstruction('Please Blink'); break;
             case 'TURN_LEFT': widget.updateInstruction('Turn Head Left'); break;
             case 'TURN_RIGHT': widget.updateInstruction('Turn Head Right'); break;
@@ -212,8 +212,8 @@ export class Truvaxia {
             case 'OFF_CENTER': widget.updateInstruction('Center your face in the frame'); break;
             case 'TILTED': widget.updateInstruction('Keep your head straight'); break;
             case 'BLURRY': widget.updateInstruction('Hold still, camera is blurry'); break;
-            case 'COMPLETED': 
-              widget.updateInstruction('Capturing...'); 
+            case 'COMPLETED':
+              widget.updateInstruction('Capturing...');
               resolve();
               break;
           }
@@ -237,10 +237,10 @@ export class Truvaxia {
 
       widget.showProcessing();
 
-      const baseUrl = this.instance.config?.baseUrl || 'http://localhost:3002';
+      const baseUrl = this.instance.config?.baseUrl || 'http://localhost:8000';
       const response = await fetch(`${baseUrl}/api/v1/analyze-liveness`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.instance?.config?.apiKey}`
         },
@@ -248,7 +248,7 @@ export class Truvaxia {
       });
 
       const backendResult = await response.json();
-      
+
       if (!isCancelled) {
         widget.unmount();
         if (response.ok) {
@@ -278,10 +278,10 @@ export class Truvaxia {
   public static async compareFaces(payload: { imageBase64_1: string, imageBase64_2: string }): Promise<any> {
     if (!this.instance) throw new Error("Truvaxia must be initialized first");
     try {
-      const baseUrl = this.instance?.config?.baseUrl || 'http://localhost:3002';
+      const baseUrl = this.instance?.config?.baseUrl || 'http://localhost:8000';
       const response = await fetch(`${baseUrl}/api/v1/compare-faces`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.instance?.config?.apiKey}`
         },
@@ -316,7 +316,7 @@ export class Truvaxia {
       await new Promise<void>((resolve, reject) => {
         liveness.start((stage: string) => {
           if (isCancelled) return;
-          switch(stage) {
+          switch (stage) {
             case 'BLINK': widget.updateInstruction('Please Blink'); break;
             case 'TURN_LEFT': widget.updateInstruction('Turn Head Left'); break;
             case 'TURN_RIGHT': widget.updateInstruction('Turn Head Right'); break;
@@ -326,8 +326,8 @@ export class Truvaxia {
             case 'OFF_CENTER': widget.updateInstruction('Center your face in the frame'); break;
             case 'TILTED': widget.updateInstruction('Keep your head straight'); break;
             case 'BLURRY': widget.updateInstruction('Hold still, camera is blurry'); break;
-            case 'COMPLETED': 
-              widget.updateInstruction('Capturing...'); 
+            case 'COMPLETED':
+              widget.updateInstruction('Capturing...');
               resolve();
               break;
           }
@@ -351,10 +351,10 @@ export class Truvaxia {
 
       widget.showProcessing();
 
-      const baseUrl = this.instance.config?.baseUrl || 'http://localhost:3002';
+      const baseUrl = this.instance.config?.baseUrl || 'http://localhost:8000';
       const response = await fetch(`${baseUrl}/api/v1/liveness-and-match`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.instance?.config?.apiKey}`
         },
@@ -362,7 +362,7 @@ export class Truvaxia {
       });
 
       const backendResult = await response.json();
-      
+
       if (!isCancelled) {
         widget.unmount();
         if (response.ok) {
@@ -389,7 +389,7 @@ export class Truvaxia {
     if (!this.instance) throw new Error("Truvaxia must be initialized first");
 
     try {
-      const baseUrl = this.instance?.config?.baseUrl || 'http://localhost:3002';
+      const baseUrl = this.instance?.config?.baseUrl || 'http://localhost:8000';
       let response;
 
       if (payload.file) {
@@ -401,7 +401,7 @@ export class Truvaxia {
 
         response = await fetch(`${baseUrl}/api/v1/extract-document`, {
           method: 'POST',
-          headers: { 
+          headers: {
             'Authorization': `Bearer ${this.instance?.config?.apiKey}`
             // Don't set Content-Type for FormData, fetch will set it with boundary
           },
@@ -411,14 +411,14 @@ export class Truvaxia {
         // Fallback to Base64
         response = await fetch(`${baseUrl}/api/v1/extract-document`, {
           method: 'POST',
-          headers: { 
+          headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${this.instance?.config?.apiKey}`
           },
-          body: JSON.stringify({ 
-            imageBase64: payload.imageBase64, 
+          body: JSON.stringify({
+            imageBase64: payload.imageBase64,
             schema: payload.schema,
-            type: payload.type 
+            type: payload.type
           })
         });
       }
@@ -439,10 +439,10 @@ export class Truvaxia {
     if (!this.instance) throw new Error("Truvaxia must be initialized first");
 
     try {
-      const baseUrl = this.instance?.config?.baseUrl || 'http://localhost:3002';
+      const baseUrl = this.instance?.config?.baseUrl || 'http://localhost:8000';
       const response = await fetch(`${baseUrl}/api/v1/analyze-risk`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.instance?.config?.apiKey}`
         },

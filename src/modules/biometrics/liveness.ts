@@ -19,6 +19,7 @@ export class LivenessDetector {
   
   private currentStage: LivenessStage = LivenessStage.BLINK;
   private onProgressCallback?: (stage: string) => void;
+  private framesMet: number = 0;
 
   private preloaded: boolean = false;
   private preloadingPromise: Promise<void> | null = null;
@@ -122,68 +123,105 @@ export class LivenessDetector {
   /**
    * Continuously analyzes the video stream for liveness indicators (e.g., blinking).
    */
+  private lastMpTime = -1;
+
   private detectLoop = () => {
     if (!this.isDetecting || !this.videoElement || !this.faceLandmarker) return;
 
-    const startTimeMs = performance.now();
+    let startTimeMs = performance.now();
+    if (startTimeMs <= this.lastMpTime) {
+      startTimeMs = this.lastMpTime + 1;
+    }
+    this.lastMpTime = startTimeMs;
+
     if (this.lastVideoTime !== this.videoElement.currentTime) {
       this.lastVideoTime = this.videoElement.currentTime;
-      const results: FaceLandmarkerResult = this.faceLandmarker.detectForVideo(this.videoElement, startTimeMs);
-      
-      if (results.faceBlendshapes && results.faceBlendshapes.length > 0 && results.faceLandmarks && results.faceLandmarks.length > 0) {
-        const landmarks = results.faceLandmarks[0];
+      try {
+        const results: FaceLandmarkerResult = this.faceLandmarker.detectForVideo(this.videoElement, startTimeMs);
+        
+        if (results.faceBlendshapes && results.faceBlendshapes.length > 0 && results.faceLandmarks && results.faceLandmarks.length > 0) {
+          const landmarks = results.faceLandmarks[0];
 
-        // 1. Run Gatekeeper Checks continuously (throttled to save CPU)
-        if (startTimeMs - this.lastGatekeeperCheckTime > 400) {
-           this.lastGatekeeperCheckTime = startTimeMs;
-           this.currentGatekeeperError = this.runGatekeeperChecks(landmarks);
-        }
+          // 1. Run Gatekeeper Checks continuously (throttled to save CPU)
+          if (startTimeMs - this.lastGatekeeperCheckTime > 400) {
+             this.lastGatekeeperCheckTime = startTimeMs;
+             this.currentGatekeeperError = this.runGatekeeperChecks(landmarks);
+          }
 
-        if (this.currentGatekeeperError) {
-          // Block liveness progression and warn user
-          if (this.onProgressCallback) this.onProgressCallback(this.currentGatekeeperError);
-        } else {
-          // Re-emit current stage in case we just recovered from an error
-          if (this.onProgressCallback) this.onProgressCallback(this.currentStage);
+          if (this.currentGatekeeperError) {
+            // Block liveness progression and warn user
+            if (this.onProgressCallback) this.onProgressCallback(this.currentGatekeeperError);
+          } else {
+            // Re-emit current stage in case we just recovered from an error
+            if (this.onProgressCallback) this.onProgressCallback(this.currentStage);
 
-          const blendshapes = results.faceBlendshapes[0].categories;
-          const leftBlink = blendshapes.find(b => b.categoryName === 'eyeBlinkLeft')?.score || 0;
-          const rightBlink = blendshapes.find(b => b.categoryName === 'eyeBlinkRight')?.score || 0;
+            const blendshapes = results.faceBlendshapes[0].categories;
+            const leftBlink = blendshapes.find(b => b.categoryName === 'eyeBlinkLeft')?.score || 0;
+            const rightBlink = blendshapes.find(b => b.categoryName === 'eyeBlinkRight')?.score || 0;
 
-          // Landmarks for head pose heuristic
-          const noseX = landmarks[1].x;
-          const leftCheekX = landmarks[234].x;
-          const rightCheekX = landmarks[454].x;
-          
-          const distLeft = Math.abs(noseX - leftCheekX);
-          const distRight = Math.abs(noseX - rightCheekX);
-          const ratio = distLeft / (distRight + 0.0001); // avoid div by 0
+            // Landmarks for head pose heuristic
+            const noseX = landmarks[1].x;
+            const leftCheekX = landmarks[234].x;
+            const rightCheekX = landmarks[454].x;
+            
+            const distLeft = Math.abs(noseX - leftCheekX);
+            const distRight = Math.abs(noseX - rightCheekX);
+            const ratio = distLeft / (distRight + 0.0001); // avoid div by 0
 
-          switch(this.currentStage) {
-            case LivenessStage.BLINK:
-              if (leftBlink > 0.4 && rightBlink > 0.4) {
-                this.advanceStage(LivenessStage.TURN_LEFT);
-              }
-              break;
-            case LivenessStage.TURN_LEFT:
-              if (ratio < 0.35) {
-                this.advanceStage(LivenessStage.TURN_RIGHT);
-              }
-              break;
-            case LivenessStage.TURN_RIGHT:
-              if (ratio > 2.5) {
-                this.advanceStage(LivenessStage.LOOK_STRAIGHT);
-              }
-              break;
-            case LivenessStage.LOOK_STRAIGHT:
-              if (ratio > 0.7 && ratio < 1.3) {
-                this.advanceStage(LivenessStage.COMPLETED);
-              }
-              break;
-            case LivenessStage.COMPLETED:
-              break;
+            switch(this.currentStage) {
+              case LivenessStage.BLINK:
+                if (leftBlink > 0.4 && rightBlink > 0.4) {
+                  this.advanceStage(LivenessStage.TURN_LEFT);
+                }
+                break;
+              case LivenessStage.TURN_LEFT:
+                if (ratio < 0.55) {
+                  this.framesMet++;
+                  if (this.framesMet > 3) {
+                    (window as any)._sdkTurnedDir = 'left';
+                    this.framesMet = 0;
+                    this.advanceStage(LivenessStage.TURN_RIGHT);
+                  }
+                } else if (ratio > 1.8) {
+                  this.framesMet++;
+                  if (this.framesMet > 3) {
+                    (window as any)._sdkTurnedDir = 'right';
+                    this.framesMet = 0;
+                    this.advanceStage(LivenessStage.TURN_RIGHT);
+                  }
+                } else {
+                  this.framesMet = 0;
+                }
+                break;
+              case LivenessStage.TURN_RIGHT:
+                if ((window as any)._sdkTurnedDir === 'left' && ratio > 1.8) {
+                  this.framesMet++;
+                  if (this.framesMet > 3) {
+                    this.framesMet = 0;
+                    this.advanceStage(LivenessStage.LOOK_STRAIGHT);
+                  }
+                } else if ((window as any)._sdkTurnedDir === 'right' && ratio < 0.55) {
+                  this.framesMet++;
+                  if (this.framesMet > 3) {
+                    this.framesMet = 0;
+                    this.advanceStage(LivenessStage.LOOK_STRAIGHT);
+                  }
+                } else {
+                  this.framesMet = 0;
+                }
+                break;
+              case LivenessStage.LOOK_STRAIGHT:
+                if (ratio > 0.8 && ratio < 1.25) {
+                  this.advanceStage(LivenessStage.COMPLETED);
+                }
+                break;
+              case LivenessStage.COMPLETED:
+                break;
+            }
           }
         }
+      } catch (err) {
+        console.error('[Truvaxia:Liveness] Detection Error:', err);
       }
     }
 
