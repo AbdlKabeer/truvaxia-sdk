@@ -1,5 +1,11 @@
 import { FaceLandmarker, FilesetResolver, FaceLandmarkerResult } from '@mediapipe/tasks-vision';
 
+// The WebAssembly runtime must be exactly the same version as the installed @mediapipe/tasks-vision
+// JavaScript (pinned in package.json), otherwise face detection can fail at runtime.
+const MEDIAPIPE_VERSION = '0.10.35';
+const MEDIAPIPE_WASM_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`;
+const FACE_LANDMARKER_MODEL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+
 export enum LivenessStage {
   BLINK = 'BLINK',
   TURN_LEFT = 'TURN_LEFT',
@@ -34,13 +40,11 @@ export class LivenessDetector {
     console.log('[Truvaxia:Liveness] Preloading MediaPipe WASM in background...');
     this.preloadingPromise = (async () => {
       try {
-        const vision = await FilesetResolver.forVisionTasks(
-          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
-        );
+        const vision = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_URL);
         
         this.faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
           baseOptions: {
-            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task',
+            modelAssetPath: FACE_LANDMARKER_MODEL,
             delegate: 'GPU',
           },
           runningMode: 'VIDEO',
