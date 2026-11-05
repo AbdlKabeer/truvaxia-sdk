@@ -10,8 +10,14 @@
   "types": "./dist/truvaxia.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/truvaxia.js",
-      "require": "./dist/truvaxia.cjs"
+      "import": {
+        "types": "./dist/truvaxia.d.ts",
+        "default": "./dist/truvaxia.js"
+      },
+      "require": {
+        "types": "./dist/truvaxia.d.cts",
+        "default": "./dist/truvaxia.cjs"
+      }
     }
   },
   "publishConfig": {
@@ -26,7 +32,9 @@
   },
   "homepage": "https://github.com/AbdlKabeer/truvaxia-sdk#readme",
   "scripts": {
-    "build": "tsup src/core/truvaxia.ts --format esm,cjs --clean --dts"
+    "build": "tsup src/core/truvaxia.ts --format esm,cjs --clean --dts",
+    "prepack": "npm run build",
+    "example": "node examples/run.mjs"
   },
   "devDependencies": {
     "@types/node": "^25.9.3",
@@ -34,6 +42,7 @@
     "typescript": "^6.0.3"
   },
   "dependencies": {
-    "@mediapipe/tasks-vision": "^0.10.35"
-  }
+    "@mediapipe/tasks-vision": "0.10.35"
+  },
+  "sideEffects": false
 }
