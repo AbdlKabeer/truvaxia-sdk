@@ -154,7 +154,7 @@ export class Truvaxia {
       };
 
       const baseUrl = this.instance.config?.baseUrl || 'http://localhost:8000';
-      const response = await fetch(`${baseUrl}/verify`, {
+      const response = await fetch(`${baseUrl}/api/v1/verify`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -163,23 +163,70 @@ export class Truvaxia {
         body: JSON.stringify(payload)
       });
 
-      const backendResult = await response.json();
+      let backendResult: any = {};
+      try { backendResult = await response.json(); } catch { /* non-JSON error body */ }
 
-      if (!isCancelled) {
+      if (isCancelled) return;
+
+      const decision = backendResult.decision || backendResult.status;
+      if (response.ok && decision === 'APPROVE') {
+        widget.showSuccess();
+        await new Promise(r => setTimeout(r, 1500));
+        if (isCancelled) return;
         widget.unmount();
-        if (response.ok && backendResult.status === 'APPROVED') {
-          callbacks.onSuccess(backendResult);
-        } else {
-          callbacks.onFailure(backendResult);
-        }
+        callbacks.onSuccess({ ...backendResult, score: backendResult.trustScore ?? Math.max(0, 100 - (backendResult.riskScore ?? 0)) });
+      } else if (response.ok && decision === 'MANUAL_REVIEW') {
+        widget.showSuccess('Submitted for review', 'Your verification needs a quick manual check. You will be notified of the outcome.');
+        await new Promise(r => setTimeout(r, 2200));
+        if (isCancelled) return;
+        widget.unmount();
+        callbacks.onFailure({ ...backendResult, message: 'Verification is pending manual review', reasons: backendResult.fraudFlags || [] });
+      } else {
+        const message = Truvaxia.describeError(response.status, backendResult);
+        const retryable = Truvaxia.isRetryable(response.status);
+        widget.showError(
+          message,
+          retryable ? () => { void Truvaxia.verifyOnboarding(data, callbacks, companyName); } : undefined,
+          () => callbacks.onFailure({ ...backendResult, message, reasons: backendResult.fraudFlags || [] })
+        );
       }
 
     } catch (e) {
-      if (!isCancelled) {
-        widget.unmount();
-        callbacks.onFailure({ message: e instanceof Error ? e.message : 'Unknown error during onboarding' });
-      }
+      if (isCancelled) return;
+      const message = Truvaxia.describeThrown(e);
+      widget.showError(
+        message,
+        () => { void Truvaxia.verifyOnboarding(data, callbacks, companyName); },
+        () => callbacks.onFailure({ message })
+      );
     }
+  }
+
+  private static isRetryable(status: number): boolean {
+    return status >= 500 || status === 429 || status === 422;
+  }
+
+  private static describeError(status: number, body: any): string {
+    if (status === 401) return 'The Truvaxia API key is invalid. Please contact the site owner.';
+    if (status === 402) return 'This service is temporarily unavailable. Please contact the site owner.';
+    if (status === 403) return 'Access to verification has been disabled for this account.';
+    if (status === 429) return 'Too many attempts. Please wait a moment and try again.';
+    // 503 means "temporarily not ready" and the server says why (for example models still loading)
+    if (status === 503 && typeof body?.detail === 'string') return body.detail;
+    if (status >= 500) return 'Something went wrong on our side. Please try again.';
+    if (body?.decision === 'DENY' || body?.status === 'DENY') return 'We were unable to verify your identity.';
+    return (typeof body?.detail === 'string' && body.detail) || body?.message || 'We were unable to complete your verification.';
+  }
+
+  private static describeThrown(e: unknown): string {
+    const name = (e as any)?.name;
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+      return 'Camera access was blocked. Allow camera access in your browser settings and try again.';
+    }
+    if (name === 'NotFoundError') return 'No camera was found on this device.';
+    if (name === 'NotReadableError') return 'Your camera is being used by another app. Close it and try again.';
+    if (e instanceof TypeError) return 'We couldn\'t reach the server. Check your internet connection and try again.';
+    return e instanceof Error ? e.message : 'Unknown error during onboarding';
   }
 
   /**
@@ -247,27 +294,40 @@ export class Truvaxia {
         body: JSON.stringify({ frameBase64: result.frameBase64, videoBase64: result.videoBase64 })
       });
 
-      const backendResult = await response.json();
+      let backendResult: any = {};
+      try { backendResult = await response.json(); } catch { /* non-JSON error body */ }
 
-      if (!isCancelled) {
+      if (isCancelled) return;
+
+      if (response.ok) {
+        widget.showSuccess('Liveness confirmed', 'Your face check is complete.');
+        await new Promise(r => setTimeout(r, 1500));
+        if (isCancelled) return;
         widget.unmount();
-        if (response.ok) {
-          callbacks.onSuccess({
-            livenessVerified: true,
-            frameBase64: result.frameBase64,
-            videoBase64: result.videoBase64,
-            analysis: backendResult.data
-          });
-        } else {
-          callbacks.onFailure(backendResult);
-        }
+        callbacks.onSuccess({
+          livenessVerified: true,
+          traceId: backendResult.traceId,
+          frameBase64: result.frameBase64,
+          videoBase64: result.videoBase64,
+          analysis: backendResult.data
+        });
+      } else {
+        const message = Truvaxia.describeError(response.status, backendResult);
+        widget.showError(
+          message,
+          Truvaxia.isRetryable(response.status) ? () => { void Truvaxia.verifyLivenessOnly(callbacks, companyName); } : undefined,
+          () => callbacks.onFailure({ ...backendResult, message })
+        );
       }
 
     } catch (e) {
-      if (!isCancelled) {
-        widget.unmount();
-        callbacks.onFailure({ message: e instanceof Error ? e.message : 'Unknown error during liveness screening' });
-      }
+      if (isCancelled) return;
+      const message = Truvaxia.describeThrown(e);
+      widget.showError(
+        message,
+        () => { void Truvaxia.verifyLivenessOnly(callbacks, companyName); },
+        () => callbacks.onFailure({ message })
+      );
     }
   }
 
@@ -361,29 +421,44 @@ export class Truvaxia {
         body: JSON.stringify({ frameBase64: result.frameBase64, videoBase64: result.videoBase64, referenceImageBase64 })
       });
 
-      const backendResult = await response.json();
+      let backendResult: any = {};
+      try { backendResult = await response.json(); } catch { /* non-JSON error body */ }
 
-      if (!isCancelled) {
+      if (isCancelled) return;
+
+      if (response.ok) {
+        const matched = backendResult.data?.match === true;
+        widget.showSuccess(
+          matched ? 'Face matched' : 'Face did not match',
+          matched ? 'Your live selfie matches your ID photo.' : 'Your live selfie does not match the ID photo.'
+        );
+        await new Promise(r => setTimeout(r, 1800));
+        if (isCancelled) return;
         widget.unmount();
-        if (response.ok) {
-          callbacks.onSuccess({
-            ...backendResult.data,
-            frameBase64: result.frameBase64,
-            videoBase64: result.videoBase64,
-          });
-        } else {
-          callbacks.onFailure(backendResult);
-        }
+        callbacks.onSuccess({
+          ...backendResult.data,
+          frameBase64: result.frameBase64,
+          videoBase64: result.videoBase64,
+        });
+      } else {
+        const message = Truvaxia.describeError(response.status, backendResult);
+        widget.showError(
+          message,
+          Truvaxia.isRetryable(response.status) ? () => { void Truvaxia.verifyLivenessAndMatch(callbacks, referenceImageBase64, companyName); } : undefined,
+          () => callbacks.onFailure({ ...backendResult, message })
+        );
       }
 
     } catch (e) {
-      if (!isCancelled) {
-        widget.unmount();
-        callbacks.onFailure({ message: e instanceof Error ? e.message : 'Unknown error during liveness and match screening' });
-      }
+      if (isCancelled) return;
+      const message = Truvaxia.describeThrown(e);
+      widget.showError(
+        message,
+        () => { void Truvaxia.verifyLivenessAndMatch(callbacks, referenceImageBase64, companyName); },
+        () => callbacks.onFailure({ message })
+      );
     }
   }
-
 
   public static async extractDocument(payload: { file?: File | Blob | any, imageBase64?: string, schema: Record<string, any>, type?: string }): Promise<any> {
     if (!this.instance) throw new Error("Truvaxia must be initialized first");

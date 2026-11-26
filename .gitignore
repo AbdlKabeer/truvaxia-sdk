@@ -4,3 +4,6 @@ dist/
 .DS_Store
 .gitignore
 .env
+examples/**/node_modules
+examples/**/.sdk
+examples/**/.env.local
